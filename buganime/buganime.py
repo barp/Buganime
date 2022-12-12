@@ -8,7 +8,7 @@ import re
 import dataclasses
 from typing import Iterator
 
-import win32event
+# import win32event
 
 from buganime import transcode
 
@@ -17,14 +17,14 @@ OUTPUT_DIR = os.getenv('BUGANIME_OUTPUT_DIR', '')
 UPSCALE_MUTEX_NAME = 'anime4kconvert'
 
 
-@contextlib.contextmanager
-def lock_mutex(name: str) -> Iterator[None]:
-    mutex = win32event.CreateMutex(None, 1, name)
-    try:
-        win32event.WaitForSingleObject(mutex, -1)
-        yield
-    finally:
-        mutex.close()
+#@contextlib.contextmanager
+#def lock_mutex(name: str) -> Iterator[None]:
+#    mutex = win32event.CreateMutex(None, 1, name)
+#    try:
+#        win32event.WaitForSingleObject(mutex, -1)
+#        yield
+#    finally:
+#        mutex.close()
 
 
 @dataclasses.dataclass
@@ -68,7 +68,7 @@ def parse_filename(input_path: str) -> TVShow | Movie:
     return Movie(name=input_name)
 
 
-def process_file(input_path: str) -> None:
+def process_file(input_path: str, output_path: str = None) -> None:
     if not input_path.endswith('.mkv'):
         return
 
@@ -76,20 +76,21 @@ def process_file(input_path: str) -> None:
 
     # Put in the correct path
     parsed = parse_filename(input_path=input_path)
-    if isinstance(parsed, TVShow):
-        output_path = os.path.join(OUTPUT_DIR, 'TV Shows', parsed.name, f'{parsed.name} S{parsed.season:02d}E{parsed.episode:02d}.mkv')
-    else:
-        output_path = os.path.join(OUTPUT_DIR, 'Movies', f'{parsed.name}.mkv')
-    if not os.path.isdir(os.path.dirname(output_path)):
-        os.makedirs(os.path.dirname(output_path))
+    if output_path is None:
+      if isinstance(parsed, TVShow):
+          output_path = os.path.join(OUTPUT_DIR, 'TV Shows', parsed.name, f'{parsed.name} S{parsed.season:02d}E{parsed.episode:02d}.mkv')
+      else:
+          output_path = os.path.join(OUTPUT_DIR, 'Movies', f'{parsed.name}.mkv')
+      if not os.path.isdir(os.path.dirname(output_path)):
+          os.makedirs(os.path.dirname(output_path))
 
     logging.info('Output is %s', output_path)
 
     try:
-        with lock_mutex(name=UPSCALE_MUTEX_NAME):
-            logging.info('Running Upscaler')
-            transcode.main([input_path, output_path])
-            logging.info('Upscaler for %s finished', input_path)
+      #with lock_mutex(name=UPSCALE_MUTEX_NAME):
+      logging.info('Running Upscaler')
+      transcode.main([input_path, output_path])
+      logging.info('Upscaler for %s finished', input_path)
     except Exception:
         logging.exception('Failed to convert %s', input_path)
 
@@ -105,10 +106,13 @@ def process_path(input_path: str) -> None:
 
 def main(args: list[str]) -> int:
     if len(args) != 1:
-        print("Usage: buganime.py <input_path>")
+        print("Usage: buganime.py <input_path> [output path]")
         return 1
 
     input_path = args[0]
+    output_path = None
+    if len(args) >= 2:
+      output_path = args[1]
     log_prefix = f'buganime_{os.path.basename(input_path)}_{datetime.datetime.now().strftime("%Y_%m_%d-%H_%M_%S")}'
     with tempfile.NamedTemporaryFile(mode='w', prefix=log_prefix, suffix='.txt', delete=False) as log_file:
         pass
@@ -126,7 +130,10 @@ def main(args: list[str]) -> int:
 
     logging.info('Buganime started running on %s', input_path)
     try:
-        process_path(input_path=input_path)
+        if output_path is None:
+          process_path(input_path=input_path)
+        else:
+          process_file(input_path=input_path, output_path=output_path)
         return 0
     except Exception:
         logging.exception('Failed to convert %s', input_path)
